@@ -4,10 +4,16 @@ from .models import (
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password  # ИЗМЕНЕНО: добавлен импорт
 
 User = get_user_model()
 
 class CustomRegisterSerializer(serializers.ModelSerializer):
+    # ИЗМЕНЕНО: явное поле password с validate_password —
+    # теперь проверяются AUTH_PASSWORD_VALIDATORS из settings.py
+    # (минимальная длина, не только цифры, не слишком похож на username, не из списка частых паролей)
+    password = serializers.CharField(write_only=True, validators=[validate_password])
+
     class Meta:
         model = User
         fields = ('username', 'email', 'password')
@@ -52,16 +58,18 @@ class CustomLoginSerializer(serializers.Serializer):
         email = data.get('email')
         password = data.get('password')
 
+        # ИЗМЕНЕНО: одно и то же сообщение для "нет email" и "неверный пароль",
+        # чтобы нельзя было перебором узнать, какие email зарегистрированы
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            raise serializers.ValidationError({"email": "Пользователь с таким email не найден"})
+            raise serializers.ValidationError({"detail": "Неверный email или пароль"})
 
         if not user.check_password(password):
-            raise serializers.ValidationError({"password": "Неверный пароль"})
+            raise serializers.ValidationError({"detail": "Неверный email или пароль"})
 
         if not user.is_active:
-            raise serializers.ValidationError("Пользователь не активен")
+            raise serializers.ValidationError({"detail": "Пользователь не активен"})
 
         self.context['user'] = user
         return data
@@ -85,7 +93,9 @@ class LogoutSerializer(serializers.Serializer):
     def validate(self, attrs):
         token = attrs.get('refresh')
         try:
-            RefreshToken(token)
+            # ИЗМЕНЕНО: сохраняем распарсенный токен в attrs,
+            # чтобы views.py не парсил его повторно
+            attrs['token'] = RefreshToken(token)
         except Exception:
             raise serializers.ValidationError({"refresh": "Невалидный токен"})
         return attrs
