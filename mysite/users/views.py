@@ -1,6 +1,5 @@
 from rest_framework import viewsets, generics, status, permissions
 from rest_framework.response import Response
-from rest_framework_simplejwt.tokens import RefreshToken
 from .models import UserProfile
 from .serializers import CustomRegisterSerializer, CustomLoginSerializer, LogoutSerializer, UserProfileSerializer
 
@@ -31,8 +30,10 @@ class LogoutView(generics.GenericAPIView):
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        # ИЗМЕНЕНО: используем уже распарсенный токен из validated_data,
+        # RefreshToken(...) больше не вызывается второй раз
         try:
-            token = RefreshToken(serializer.validated_data['refresh'])
+            token = serializer.validated_data['token']
             token.blacklist()
             return Response(status=status.HTTP_205_RESET_CONTENT)
         except Exception:
